@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hello-chart.fullname" . }}
+data:
+  index.html: |-
+    {{- .Values.indexHtml | nindent 4 }}

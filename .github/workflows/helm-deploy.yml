@@ -1,0 +1,117 @@
+# .github/workflows/helm-deploy.yml
+name: Helm Deploy
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "helm/**"
+      - ".github/workflows/helm-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      release:
+        { description: "Helm release name", required: false, default: "hello" }
+      namespace:
+        { description: "K8s namespace", required: false, default: "hello" }
+      chart_path:
+        {
+          description: "Chart path",
+          required: false,
+          default: "helm/hello-chart",
+        }
+      values_file:
+        {
+          description: "Values file",
+          required: false,
+          default: "helm/hello-chart/values.yaml",
+        }
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # optional: require manual approval via an Environment (e.g., dev/prod)
+    # environment: dev
+    concurrency:
+      group: "helm-${{ github.ref }}-${{ inputs.namespace || vars.HELM_NAMESPACE || 'hello' }}"
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+
+      - name: Write backend config
+        working-directory: terraform
+        shell: bash
+        run: |
+          cat > backend.hcl <<'EOF'
+          resource_group_name  = "${{ vars.BACKEND_RG }}"
+          storage_account_name = "${{ vars.BACKEND_SA }}"
+          container_name       = "${{ vars.BACKEND_CONTAINER }}"
+          key                  = "${{ vars.BACKEND_KEY }}"
+          use_azuread_auth     = true
+          EOF
+
+      # If your IaC is in ./terraform, adjust the path accordingly
+      - name: Read TF outputs (no plan/apply)
+        working-directory: terraform
+        env:
+          # If using azurerm backend, OIDC login above is enough,
+          # just ensure the workflow identity has Storage Blob Data Reader on the state container.
+          ARM_USE_OIDC: true
+        run: |
+          set -euo pipefail
+          terraform init -reconfigure -backend-config=backend.hcl
+          echo "AZURE_RESOURCE_GROUP=$(terraform output -raw resource_group_name)" >> "$GITHUB_ENV"
+          echo "AKS_CLUSTER_NAME=$(terraform output -raw aks_name)" >> "$GITHUB_ENV"
+
+      - name: Show values (sanity check)
+        run: |
+          echo "RG=$AZURE_RESOURCE_GROUP"
+          echo "AKS=$AKS_CLUSTER_NAME"
+
+      - name: Set AKS context
+        run: |
+          az aks get-credentials \
+            -g "$AZURE_RESOURCE_GROUP" \
+            -n "$AKS_CLUSTER_NAME" \
+            --overwrite-existing
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Helm version
+        run: helm version
+
+      - name: Helm lint
+        run: |
+          CHART_PATH="${{ inputs.chart_path || vars.HELM_CHART_PATH || 'helm/hello-chart' }}"
+          helm lint "$CHART_PATH"
+
+      - name: Helm upgrade/install
+        run: |
+          set -euo pipefail
+          RELEASE="${{ inputs.release     || vars.HELM_RELEASE     || 'hello' }}"
+          NAMESPACE="${{ inputs.namespace || vars.HELM_NAMESPACE   || 'hello' }}"
+          CHART_PATH="${{ inputs.chart_path || vars.HELM_CHART_PATH || 'helm/hello-chart' }}"
+          VALUES_FILE="${{ inputs.values_file || vars.HELM_VALUES_FILE || 'helm/hello-chart/values.yaml' }}"
+
+          # ensure namespace exists
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+          helm upgrade --install "$RELEASE" "$CHART_PATH" \
+            --namespace "$NAMESPACE" \
+            -f "$VALUES_FILE"

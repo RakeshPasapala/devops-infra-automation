@@ -1,0 +1,173 @@
+name: terraform-apply (plan+apply with approval)
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment (only 'dev' is wired)"
+        required: false
+        default: "dev"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  ARM_USE_OIDC: "true"
+
+jobs:
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    outputs:
+      tf_workspace: ${{ steps.meta.outputs.tf_workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: tflint init
+        working-directory: ./terraform
+        run: tflint --init
+
+      - name: tflint run
+        working-directory: ./terraform
+        run: tflint --recursive
+
+      - name: Derive metadata
+        id: meta
+        run: |
+          echo "tf_workspace=${{ github.event.inputs.env || 'dev' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Write backend config
+        working-directory: terraform
+        shell: bash
+        run: |
+          cat > backend.hcl <<'EOF'
+          resource_group_name  = "${{ vars.BACKEND_RG }}"
+          storage_account_name = "${{ vars.BACKEND_SA }}"
+          container_name       = "${{ vars.BACKEND_CONTAINER }}"
+          key                  = "${{ vars.BACKEND_KEY }}"
+          use_azuread_auth     = true
+          EOF
+
+      - name: Terraform Init
+        working-directory: terraform
+        env:
+          TF_INPUT: false
+          TF_IN_AUTOMATION: true
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform init -reconfigure -backend-config=backend.hcl
+
+      - name: Terraform Fmt (check)
+        working-directory: ./terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        run: terraform validate
+
+      - name: Terraform Plan (binary + text)
+        env:
+          TF_INPUT: false
+          TF_IN_AUTOMATION: true
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        working-directory: ./terraform
+        run: |
+          terraform plan             -var-file="env/${{ steps.meta.outputs.tf_workspace }}.tfvars"             -out=tfplan.binary             -input=false             -lock=true             -lock-timeout=2m
+          terraform show -no-color tfplan.binary > tfplan.txt
+
+      - name: Upload plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: |
+            terraform/tfplan.binary
+            terraform/tfplan.txt
+          if-no-files-found: error
+
+  apply:
+    name: Terraform Apply (requires approval)
+    needs: plan
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: https://portal.azure.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+
+      - name: Write backend config
+        working-directory: terraform
+        shell: bash
+        run: |
+          cat > backend.hcl <<'EOF'
+          resource_group_name  = "${{ vars.BACKEND_RG }}"
+          storage_account_name = "${{ vars.BACKEND_SA }}"
+          container_name       = "${{ vars.BACKEND_CONTAINER }}"
+          key                  = "${{ vars.BACKEND_KEY }}"
+          use_azuread_auth     = true
+          EOF
+
+      - name: Terraform Init (remote backend)
+        env:
+          TF_INPUT: false
+          TF_IN_AUTOMATION: true
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        working-directory: ./terraform
+        run: terraform init -backend-config=backend.hcl -input=false
+
+      - name: Download plan artifact (from this workflow run)
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: ./terraform
+
+      - name: Terraform Apply (using the exact plan)
+        env:
+          TF_INPUT: false
+          TF_IN_AUTOMATION: true
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        working-directory: ./terraform
+        run: |
+          test -f tfplan.binary
+          terraform apply -input=false -lock=true -auto-approve tfplan.binary

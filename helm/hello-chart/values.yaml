@@ -1,0 +1,77 @@
+replicaCount: 1
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: stable
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: hello.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+startupProbe:
+  httpGet: { path: "/", port: http }
+  periodSeconds: 2
+  failureThreshold: 30
+livenessProbe:
+  httpGet: { path: "/", port: http }
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet: { path: "/", port: http }
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 6
+  
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+indexHtml: |
+  <html>
+    <head><title>Hello</title></head>
+    <body style="font-family: sans-serif; text-align: center; margin-top: 80px;">
+      <h1>Hello World!</h1>
+      <p>This page is deployed within nginx, using LoadBalancer and this k8s cluster is deployed on AKS using Terraform.</p>
+      <hr style="margin: 40px auto; width: 60%;">
+      <footer style="margin-top: 40px; font-size: 14px; color: #555;">
+        <p>Created and deployed by <strong>Amritpal Singh</strong></p>
+        <p>
+          <a href="https://www.linkedin.com/in/s-amritpal/" target="_blank" style="color: #0077b5; text-decoration: none;">
+            Connect on LinkedIn
+          </a>
+        </p>
+      </footer>
+    </body>
+  </html>
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
