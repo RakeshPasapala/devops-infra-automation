@@ -66,6 +66,14 @@ jobs:
           use_azuread_auth     = true
           EOF
 
+
+      - name: Debug backend vars
+        run: |
+          echo "RG=${{ vars.BACKEND_RESOURCE_GROUP }}"
+          echo "SA=${{ vars.BACKEND_STORAGE_ACCOUNT }}"
+          echo "CONTAINER=${{ vars.BACKEND_CONTAINER_NAME }}"
+          echo "KEY=${{ vars.BACKEND_KEY }}"
+          
       - name: Terraform Init
         working-directory: terraform
         env:
