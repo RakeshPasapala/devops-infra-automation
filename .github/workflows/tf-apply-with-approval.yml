@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       env:
-        description: "Environment (only 'dev' is wired)"
+        description: "Environment (only 'main' is wired)"
         required: false
-        default: "dev"
+        default: "main"
 
 permissions:
   id-token: write
@@ -52,7 +52,7 @@ jobs:
       - name: Derive metadata
         id: meta
         run: |
-          echo "tf_workspace=${{ github.event.inputs.env || 'dev' }}" >> "$GITHUB_OUTPUT"
+          echo "tf_workspace=${{ github.event.inputs.env || 'main' }}" >> "$GITHUB_OUTPUT"
 
       - name: Write backend config
         working-directory: terraform
@@ -112,7 +112,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     environment:
-      name: dev
+      name: main
       url: https://portal.azure.com
     steps:
       - name: Checkout
