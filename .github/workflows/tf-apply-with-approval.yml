@@ -20,6 +20,9 @@ jobs:
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+    environment:
+      name: main
+      url: https://portal.azure.com
     outputs:
       tf_workspace: ${{ steps.meta.outputs.tf_workspace }}
     steps:
@@ -73,7 +76,7 @@ jobs:
           echo "SA=${{ vars.BACKEND_STORAGE_ACCOUNT }}"
           echo "CONTAINER=${{ vars.BACKEND_CONTAINER_NAME }}"
           echo "KEY=${{ vars.BACKEND_KEY }}"
-          
+
       - name: Terraform Init
         working-directory: terraform
         env:
