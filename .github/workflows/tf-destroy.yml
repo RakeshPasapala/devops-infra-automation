@@ -15,7 +15,7 @@ jobs:
   destroy:
     if: github.event.inputs.confirm == 'DESTROY'
     runs-on: ubuntu-latest
-    environment: dev # manual approval on dev env
+    environment: main # manual approval on dev env
     steps:
       - uses: actions/checkout@v4
 
