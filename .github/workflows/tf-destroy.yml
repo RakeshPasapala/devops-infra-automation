@@ -35,9 +35,9 @@ jobs:
         shell: bash
         run: |
           cat > backend.hcl <<'EOF'
-          resource_group_name  = "${{ vars.BACKEND_RG }}"
-          storage_account_name = "${{ vars.BACKEND_SA }}"
-          container_name       = "${{ vars.BACKEND_CONTAINER }}"
+          resource_group_name  = "${{ vars.BACKEND_RESOURCE_GROUP }}"
+          storage_account_name = "${{ vars.BACKEND_STORAGE_ACCOUNT }}"
+          container_name       = "${{ vars.BACKEND_CONTAINER_NAME }}"
           key                  = "${{ vars.BACKEND_KEY }}"
           use_azuread_auth     = true
           EOF
