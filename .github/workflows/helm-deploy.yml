@@ -33,6 +33,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: main
+      url: https://portal.azure.com
     # optional: require manual approval via an Environment (e.g., dev/prod)
     # environment: dev
     concurrency:
