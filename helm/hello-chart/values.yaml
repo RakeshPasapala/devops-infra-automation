@@ -62,9 +62,9 @@ indexHtml: |
       <p>This page is deployed within nginx, using LoadBalancer and this k8s cluster is deployed on AKS using Terraform.</p>
       <hr style="margin: 40px auto; width: 60%;">
       <footer style="margin-top: 40px; font-size: 14px; color: #555;">
-        <p>Created and deployed by <strong>Amritpal Singh</strong></p>
+        <p>Created and deployed by <strong>Rakesh Pasapala</strong></p>
         <p>
-          <a href="https://www.linkedin.com/in/s-amritpal/" target="_blank" style="color: #0077b5; text-decoration: none;">
+          <a href="https://www.linkedin.com/in/rakeshpasapalareddy/" target="_blank" style="color: #0077b5; text-decoration: none;">
             Connect on LinkedIn
           </a>
         </p>
